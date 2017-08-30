@@ -1,5 +1,5 @@
-defmodule Membrane.Element.Fade.In do
-  alias Membrane.Element.Fade.In.Options
+defmodule Membrane.Element.Fade.InOut do
+  alias Membrane.Element.Fade.InOut.Options
   alias Membrane.Time
   alias Membrane.Caps.Audio.Raw
   use Membrane.Element.Base.Filter
@@ -15,27 +15,33 @@ defmodule Membrane.Element.Fade.In do
   }
 
 
-  def handle_init(%Options{fade_duration: fade_duration, countdown: countdown}) do
+  def handle_init(%Options{fade_in_duration: fade_in_duration, fade_in_start: fade_in_start}) do
     {:ok, %{
-      fade_duration: fade_duration,
-      countdown: countdown,
+      fade_in_duration: fade_in_duration,
+      fade_in_start: fade_in_start,
       sample_size: 0,
       leftover: <<>>,
       timeframe_byte_size: 0,
-      slope: [],
+      arg_count: 0,
+      current_arg: 0,
+      current_fadein_sample: 1,
+      fade_in_done: false,
+      fade_in_duration_frames: 0,
     }}
   end
 
 
-  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, %{fade_duration: fade_duration} = state) do
+  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, %{fade_in_duration: fade_in_duration} = state) do
     {:ok, sample_size} = Raw.format_to_sample_size(format)
-
+    tframes = get_required_timeframes_number(fade_in_duration, sample_rate)
     {:ok, {
       [caps: {:source, caps}],
       %{state |
+        fade_in_duration_frames: tframes,
         sample_size: sample_size,
         timeframe_byte_size: channels * sample_size,
-        slope: generate_slope(fade_duration, sample_rate),
+        arg_count: - div(tframes, 2) - 1,
+        d_arg: get_d_arg(fade_in_duration, sample_rate, -3.5, 3.5),
         leftover: <<>>,
       }
     }}
@@ -53,23 +59,27 @@ defmodule Membrane.Element.Fade.In do
   end
 
 
-  defp multiplicative_fader(data, %Raw{} = _caps, %{slope: slope} = state, new_data) when slope==[] do
-    {:ok, {new_data <> data, state}}
-  end
-
-
-  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{countdown: countdown, slope: [slope_hd | slope_tl], timeframe_byte_size: timeframe_byte_size, sample_size: sample_size} = state, new_data) do
+  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames} = state, new_data) do
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
-        if(countdown <= 0) do
-          new_data = new_data <> (timeframe |> multiply_channels_by_constant(slope_hd, format, sample_size) |> channels_list_to_binary(format))
-          multiplicative_fader(rest, caps, %{state | slope: slope_tl}, new_data)
+        state = %{state | current_time: current_time + (Time.seconds(1) / sample_rate)}
+        if (fade_in_done == false) do
+          if(fade_in_start <= current_time) do
+            new_data = new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format))
+            if (arg_count > div(fade_in_duration_frames, 2)) do
+              multiplicative_fader(rest, caps, %{state | fade_in_done: true}, new_data)
+            else
+              multiplicative_fader(rest, caps, %{state | arg_count: arg_count + 1}, new_data)
+            end
+          else
+            new_data = new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format))
+            multiplicative_fader(rest, caps, state, new_data)
+          end
         else
-          new_data = new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format))
-          multiplicative_fader(rest, caps, %{state | countdown: countdown - (Time.seconds(1) / sample_rate)}, new_data)
+          {:ok, {new_data <> data, state}}
         end
       leftover ->
-        {:ok, {new_data, %{state | leftover: leftover}}}
+        {:ok, {new_data, %{state | leftover: leftover, current_time: current_time + (Time.seconds(1) / sample_rate)}}}
     end
   end
 
@@ -77,9 +87,9 @@ defmodule Membrane.Element.Fade.In do
   def e(), do: :math.exp(1) # base of the natural logarithm
 
 
-  def generate_slope(duration, sample_rate) do
+  def get_d_arg(duration, sample_rate, low_arg, high_arg) do
     tframes = get_required_timeframes_number(duration, sample_rate)
-    for x <- normalized_range(tframes, -3.5, 3.5), do: tanh_normalized(x)
+    (high_arg-low_arg) / tframes
   end
 
 
@@ -91,15 +101,11 @@ defmodule Membrane.Element.Fade.In do
   defp tanh_normalized(x), do: (tanh(x) + 1) / 2 # y axis
 
 
-  defp normalized_range(elems_number, low_boundary, high_boundary) do # x axis
-    Enum.map(1..elems_number, &((high_boundary - low_boundary) * (&1 - 1) / (elems_number - 1) + low_boundary))
-  end
-
-
   def get_zeros_list(len), do: for(_ <- 1..len, do: 0)
 
 
   def channels_list_to_binary(list, format), do: for(x <- list, into: "", do: Raw.value_to_sample!(x, format))
+
 
   def multiply_channels_by_constant(data, constant, format, sample_size), do: \
     for(<<x::binary-size(sample_size) <- data>>, do: round(Raw.sample_to_value!(x, format) * constant))
