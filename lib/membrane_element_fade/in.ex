@@ -20,7 +20,9 @@ defmodule Membrane.Element.Fade.In do
       fade_duration: fade_duration,
       countdown: countdown,
       sample_size: 0,
-      timeframe_byte_size: 0
+      leftover: <<>>,
+      timeframe_byte_size: 0,
+      slope: [],
     }}
   end
 
@@ -34,13 +36,13 @@ defmodule Membrane.Element.Fade.In do
         sample_size: sample_size,
         timeframe_byte_size: channels * sample_size,
         slope: generate_slope(fade_duration, sample_rate),
-        leftover: <<>>
+        leftover: <<>>,
       }
     }}
   end
 
 
-  def handle_demand(:source, size, _, state) do
+  def handle_demand(:source, size, :bytes, _, state) do
     {:ok, {[demand: {:sink, size}], state}}
   end
 
@@ -56,11 +58,11 @@ defmodule Membrane.Element.Fade.In do
   end
 
 
-  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{countdown: countdown, slope: [slope_hd, slope_tl], timeframe_byte_size: timeframe_byte_size, sample_size: sample_size} = state, new_data) do
+  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{countdown: countdown, slope: [slope_hd | slope_tl], timeframe_byte_size: timeframe_byte_size, sample_size: sample_size} = state, new_data) do
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
         if(countdown <= 0) do
-          new_data = new_data <> (timeframe |> multiply_channels_by_constant(slope_hd, format, sample_size) |> round |> channels_list_to_binary(format))
+          new_data = new_data <> (timeframe |> multiply_channels_by_constant(slope_hd, format, sample_size) |> channels_list_to_binary(format))
           multiplicative_fader(rest, caps, %{state | slope: slope_tl}, new_data)
         else
           new_data = new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format))
@@ -100,5 +102,5 @@ defmodule Membrane.Element.Fade.In do
   def channels_list_to_binary(list, format), do: for(x <- list, into: "", do: Raw.value_to_sample!(x, format))
 
   def multiply_channels_by_constant(data, constant, format, sample_size), do: \
-    for(<<x::binary-size(sample_size) <- data>>, do: Raw.sample_to_value!(x, format) * constant)
+    for(<<x::binary-size(sample_size) <- data>>, do: round(Raw.sample_to_value!(x, format) * constant))
 end

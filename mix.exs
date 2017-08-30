@@ -2,7 +2,7 @@ defmodule Membrane.Element.Fade.Mixfile do
   use Mix.Project
 
   def project do
-    [app: :membrane_element_Fade,
+    [app: :membrane_element_fade,
      compilers: Mix.compilers,
      version: "0.0.1",
      elixir: "~> 1.3",
