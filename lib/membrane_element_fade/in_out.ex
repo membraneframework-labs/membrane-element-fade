@@ -15,10 +15,12 @@ defmodule Membrane.Element.Fade.InOut do
   }
 
 
-  def handle_init(%Options{fade_in_duration: fade_in_duration, fade_in_start: fade_in_start}) do
+  def handle_init(%Options{fade_in_duration: fade_in_duration, fade_in_start: fade_in_start, fade_out_start: fade_out_start, fade_out_duration: fade_out_duration}) do
     {:ok, %{
       fade_in_duration: fade_in_duration,
       fade_in_start: fade_in_start,
+      fade_out_duration: fade_in_duration,
+      fade_out_start: fade_in_start,
       sample_size: 0,
       leftover: <<>>,
       timeframe_byte_size: 0,
@@ -27,6 +29,8 @@ defmodule Membrane.Element.Fade.InOut do
       current_fadein_sample: 1,
       fade_in_done: false,
       fade_in_duration_frames: 0,
+      d_arg: 0.0,
+      current_time: 0,
     }}
   end
 
@@ -59,12 +63,12 @@ defmodule Membrane.Element.Fade.InOut do
   end
 
 
-  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames} = state, new_data) do
+  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames, fade_out_start: fade_out_start} = state, new_data) do
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
         state = %{state | current_time: current_time + (Time.seconds(1) / sample_rate)}
         if (fade_in_done == false) do
-          if(fade_in_start <= current_time) do
+          if(current_time > fade_in_start) do
             new_data = new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format))
             if (arg_count > div(fade_in_duration_frames, 2)) do
               multiplicative_fader(rest, caps, %{state | fade_in_done: true}, new_data)
@@ -76,7 +80,17 @@ defmodule Membrane.Element.Fade.InOut do
             multiplicative_fader(rest, caps, state, new_data)
           end
         else
-          {:ok, {new_data <> data, state}}
+          if(current_time > fade_out_start) do
+            {new_data, state} = 
+            if (arg_count < - div(fade_in_duration_frames, 2)) do #TODO: SUPPORT FADE OUT CUSTOM DURATION
+              {new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format)), state}
+            else
+              {new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format)), %{state | arg_count: arg_count - 1}}
+            end
+            multiplicative_fader(rest, caps, state, new_data)
+          else
+            {:ok, {new_data <> data, state}}
+          end
         end
       leftover ->
         {:ok, {new_data, %{state | leftover: leftover, current_time: current_time + (Time.seconds(1) / sample_rate)}}}
