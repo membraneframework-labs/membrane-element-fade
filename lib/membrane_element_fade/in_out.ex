@@ -19,8 +19,8 @@ defmodule Membrane.Element.Fade.InOut do
     {:ok, %{
       fade_in_duration: fade_in_duration,
       fade_in_start: fade_in_start,
-      fade_out_duration: fade_in_duration,
-      fade_out_start: fade_in_start,
+      fade_out_duration: fade_out_duration,
+      fade_out_start: fade_out_start,
       sample_size: 0,
       leftover: <<>>,
       timeframe_byte_size: 0,
@@ -35,16 +35,18 @@ defmodule Membrane.Element.Fade.InOut do
   end
 
 
-  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, %{fade_in_duration: fade_in_duration} = state) do
+  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, %{fade_in_duration: fade_in_duration, fade_out_duration: fade_out_duration} = state) do
     {:ok, sample_size} = Raw.format_to_sample_size(format)
-    tframes = get_required_timeframes_number(fade_in_duration, sample_rate)
+    tframes_in = get_required_timeframes_number(fade_in_duration, sample_rate)
+    tframes_out = get_required_timeframes_number(fade_out_duration, sample_rate)
     {:ok, {
       [caps: {:source, caps}],
       %{state |
-        fade_in_duration_frames: tframes,
+        fade_out_duration_frames: tframes_out,
+        fade_in_duration_frames: tframes_in,
         sample_size: sample_size,
         timeframe_byte_size: channels * sample_size,
-        arg_count: - div(tframes, 2) - 1,
+        arg_count: - div(tframes_in, 2) - 1,
         d_arg: get_d_arg(fade_in_duration, sample_rate, -3.5, 3.5),
         leftover: <<>>,
       }
@@ -63,7 +65,8 @@ defmodule Membrane.Element.Fade.InOut do
   end
 
 
-  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames, fade_out_start: fade_out_start} = state, new_data) do
+  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, 
+                            %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames, fade_out_start: fade_out_start, fade_out_duration_frames: fade_out_duration_frames, fade_out_duration: fade_out_duration} = state, new_data) do
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
         state = %{state | current_time: current_time + (Time.seconds(1) / sample_rate)}
@@ -71,7 +74,7 @@ defmodule Membrane.Element.Fade.InOut do
           if(current_time > fade_in_start) do
             new_data = new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format))
             if (arg_count > div(fade_in_duration_frames, 2)) do
-              multiplicative_fader(rest, caps, %{state | fade_in_done: true}, new_data)
+              multiplicative_fader(rest, caps, %{state | fade_in_done: true, d_arg: get_d_arg(fade_out_duration, sample_rate, -3.5, 3.5), arg_count: div(fade_out_duration_frames, 2)}, new_data)
             else
               multiplicative_fader(rest, caps, %{state | arg_count: arg_count + 1}, new_data)
             end
@@ -82,7 +85,7 @@ defmodule Membrane.Element.Fade.InOut do
         else
           if(current_time > fade_out_start) do
             {new_data, state} = 
-            if (arg_count < - div(fade_in_duration_frames, 2)) do #TODO: SUPPORT FADE OUT CUSTOM DURATION
+            if (arg_count < - div(fade_in_duration_frames, 2)) do
               {new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format)), state}
             else
               {new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format)), %{state | arg_count: arg_count - 1}}
