@@ -28,6 +28,7 @@ defmodule Membrane.Element.Fade.InOut do
       sample_duration: 0.0,
       sample_size: 0,
       steady_state_multiplier: initial_level,
+      tanh_range: 1,
       timeframe_byte_size: 0,
     }}
   end
@@ -63,29 +64,29 @@ defmodule Membrane.Element.Fade.InOut do
   end
   
   defp multiplicative_fader(data, %Raw{format: format, sample_rate: sample_rate} = caps,
-                            %{arg_range: arg_range, sample_size: sample_size, steady_state_multiplier: steady_state_multiplier, current_time: current_time, sample_duration: sample_duration,
-                            timeframe_byte_size: timeframe_byte_size, fade_in_progress: fade_in_progress, fadings_list: [fadings_hd | fadings_tl], d_arg: d_arg, current_arg: current_arg} = state,
+                            %{arg_range: arg_range, sample_size: sample_size, steady_state_multiplier: steady_state_multiplier, current_time: current_time, sample_duration: sample_duration, d_arg: d_arg, tanh_range: tanh_range,
+                            timeframe_byte_size: timeframe_byte_size, fade_in_progress: fade_in_progress, fadings_list: [fadings_hd | fadings_tl], current_fade_duration_samples: current_fade_duration_samples, current_arg: current_arg} = state,
                             new_data) do
 
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
         if(fade_in_progress == false) do
           if(fadings_hd.at_time <= current_time * sample_duration) do
-            current_fade_duration_samples = get_required_timeframes_number(fadings_hd.duration, sample_rate)
-            # arg_range =
-            #   if(fadings_hd.to_level > steady_state_multiplier) do
-            #     abs(arg_range)
-            #   else
-            #     -abs(arg_range)
-            #   end
+            current_fade_duration_samples = get_required_timeframes_number(fadings_hd.duration, sample_rate) 
             multiplicative_fader(
               data,
               caps,
               %{
                 state | fade_in_progress: true,
+                arg_range: if Map.has_key?(fadings_hd, :arg_range) do
+                    fadings_hd.arg_range 
+                  else
+                    3.5
+                  end,
                 current_fade_duration_samples: current_fade_duration_samples,
                 d_arg: get_d_arg(current_fade_duration_samples, -arg_range, arg_range),
                 current_arg: 0,
+                tanh_range: tanh(arg_range),
               },
               new_data
             )
@@ -99,10 +100,10 @@ defmodule Membrane.Element.Fade.InOut do
           end
 
         else
-          if(abs(current_arg * d_arg - arg_range) > abs(arg_range)) do
+          if(current_arg > current_fade_duration_samples) do
             multiplicative_fader(data, caps, %{state | fade_in_progress: false, steady_state_multiplier: fadings_hd.to_level, fadings_list: fadings_tl}, new_data)
           else
-            fading_factor = tanh_normalized(current_arg * d_arg - arg_range, steady_state_multiplier, fadings_hd.to_level)
+            fading_factor = tanh_normalized(current_arg * d_arg - arg_range, tanh_range, steady_state_multiplier, fadings_hd.to_level)
             multiplicative_fader(
               rest,
               caps,
@@ -129,7 +130,7 @@ defmodule Membrane.Element.Fade.InOut do
 
   defp tanh(x), do: (1 - :math.pow(e(), -2 * x)) / (1 + :math.pow(e(), -2 * x))
 
-  def tanh_normalized(x, max, min), do: ((tanh(x) + 1) * (max-min) / 2) + min # y axis
+  def tanh_normalized(x, range, old, new), do: (tanh(x) + range) * (new - old) / (2*range) + old # y axis
 
 
   def get_zeros_list(len), do: for(_ <- 1..len, do: 0)
