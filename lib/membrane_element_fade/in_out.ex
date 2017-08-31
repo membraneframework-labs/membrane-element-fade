@@ -29,6 +29,7 @@ defmodule Membrane.Element.Fade.InOut do
       current_fadein_sample: 1,
       fade_in_done: false,
       fade_in_duration_frames: 0,
+      fade_out_duration_frames: 0,
       d_arg: 0.0,
       current_time: 0,
     }}
@@ -69,9 +70,9 @@ defmodule Membrane.Element.Fade.InOut do
                             %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames, fade_out_start: fade_out_start, fade_out_duration_frames: fade_out_duration_frames, fade_out_duration: fade_out_duration} = state, new_data) do
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
-        state = %{state | current_time: current_time + (Time.seconds(1) / sample_rate)}
+        state = %{state | current_time: current_time + 1}
         if (fade_in_done == false) do
-          if(current_time > fade_in_start) do
+          if(state.current_time * (Time.seconds(1) / sample_rate) > fade_in_start) do
             new_data = new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format))
             if (arg_count > div(fade_in_duration_frames, 2)) do
               multiplicative_fader(rest, caps, %{state | fade_in_done: true, d_arg: get_d_arg(fade_out_duration, sample_rate, -3.5, 3.5), arg_count: div(fade_out_duration_frames, 2)}, new_data)
@@ -83,20 +84,21 @@ defmodule Membrane.Element.Fade.InOut do
             multiplicative_fader(rest, caps, state, new_data)
           end
         else
-          if(current_time > fade_out_start) do
+          if(state.current_time * (Time.seconds(1) / sample_rate) > fade_out_start) do
             {new_data, state} = 
-            if (arg_count < - div(fade_in_duration_frames, 2)) do
+            if (arg_count < - div(fade_out_duration_frames, 2)) do
               {new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format)), state}
             else
               {new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format)), %{state | arg_count: arg_count - 1}}
+
             end
             multiplicative_fader(rest, caps, state, new_data)
           else
-            {:ok, {new_data <> data, state}}
+            {:ok, {new_data <> data, %{state | current_time: current_time + div(byte_size(data), timeframe_byte_size) - 1}}}
           end
         end
       leftover ->
-        {:ok, {new_data, %{state | leftover: leftover, current_time: current_time + (Time.seconds(1) / sample_rate)}}}
+        {:ok, {new_data, %{state | leftover: leftover}}}
     end
   end
 
