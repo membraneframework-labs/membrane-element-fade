@@ -15,40 +15,32 @@ defmodule Membrane.Element.Fade.InOut do
   }
 
 
-  def handle_init(%Options{fade_in_duration: fade_in_duration, fade_in_start: fade_in_start, fade_out_start: fade_out_start, fade_out_duration: fade_out_duration}) do
+  def handle_init(%Options{fadings_list: fadings_list, initial_level: initial_level}) do
     {:ok, %{
-      fade_in_duration: fade_in_duration,
-      fade_in_start: fade_in_start,
-      fade_out_duration: fade_out_duration,
-      fade_out_start: fade_out_start,
-      sample_size: 0,
-      leftover: <<>>,
-      timeframe_byte_size: 0,
-      arg_count: 0,
+      arg_range: 3.5,
       current_arg: 0,
-      current_fadein_sample: 1,
-      fade_in_done: false,
-      fade_in_duration_frames: 0,
-      fade_out_duration_frames: 0,
-      d_arg: 0.0,
       current_time: 0,
+      current_fade_duration_samples: 0,
+      d_arg: 0.0,
+      fadings_list: fadings_list,
+      fade_in_progress: false,
+      leftover: <<>>,
+      sample_duration: 0.0,
+      sample_size: 0,
+      steady_state_multiplier: initial_level,
+      timeframe_byte_size: 0,
     }}
   end
 
 
-  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, %{fade_in_duration: fade_in_duration, fade_out_duration: fade_out_duration} = state) do
+  def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, state) do
     {:ok, sample_size} = Raw.format_to_sample_size(format)
-    tframes_in = get_required_timeframes_number(fade_in_duration, sample_rate)
-    tframes_out = get_required_timeframes_number(fade_out_duration, sample_rate)
     {:ok, {
       [caps: {:source, caps}],
       %{state |
-        fade_out_duration_frames: tframes_out,
-        fade_in_duration_frames: tframes_in,
         sample_size: sample_size,
+        sample_duration: (Time.seconds(1) / sample_rate),
         timeframe_byte_size: channels * sample_size,
-        arg_count: - div(tframes_in, 2) - 1,
-        d_arg: get_d_arg(fade_in_duration, sample_rate, -3.5, 3.5),
         leftover: <<>>,
       }
     }}
@@ -66,37 +58,60 @@ defmodule Membrane.Element.Fade.InOut do
   end
 
 
-  defp multiplicative_fader(data, %Raw{channels: channels, sample_rate: sample_rate, format: format} = caps, 
-                            %{current_time: current_time, fade_in_start: fade_in_start, d_arg: d_arg, arg_count: arg_count, timeframe_byte_size: timeframe_byte_size, sample_size: sample_size, fade_in_done: fade_in_done, fade_in_duration_frames: fade_in_duration_frames, fade_out_start: fade_out_start, fade_out_duration_frames: fade_out_duration_frames, fade_out_duration: fade_out_duration} = state, new_data) do
+  defp multiplicative_fader(data, %Raw{format: format} = _caps, %{fadings_list: [], steady_state_multiplier: steady_state_multiplier, sample_size: sample_size} = state, new_data) do
+    {:ok, {new_data <> (data |> multiply_channels_by_constant(steady_state_multiplier, format, sample_size) |> channels_list_to_binary(format)), state}}
+  end
+  
+  defp multiplicative_fader(data, %Raw{format: format, sample_rate: sample_rate} = caps,
+                            %{arg_range: arg_range, sample_size: sample_size, steady_state_multiplier: steady_state_multiplier, current_time: current_time, sample_duration: sample_duration,
+                            timeframe_byte_size: timeframe_byte_size, fade_in_progress: fade_in_progress, fadings_list: [fadings_hd | fadings_tl], d_arg: d_arg, current_arg: current_arg} = state,
+                            new_data) do
+
     case data do
       <<timeframe::binary-size(timeframe_byte_size), rest::binary>> ->
-        state = %{state | current_time: current_time + 1}
-        if (fade_in_done == false) do
-          if(state.current_time * (Time.seconds(1) / sample_rate) > fade_in_start) do
-            new_data = new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format))
-            if (arg_count > div(fade_in_duration_frames, 2)) do
-              multiplicative_fader(rest, caps, %{state | fade_in_done: true, d_arg: get_d_arg(fade_out_duration, sample_rate, -3.5, 3.5), arg_count: div(fade_out_duration_frames, 2)}, new_data)
-            else
-              multiplicative_fader(rest, caps, %{state | arg_count: arg_count + 1}, new_data)
-            end
+        if(fade_in_progress == false) do
+          if(fadings_hd.at_time <= current_time * sample_duration) do
+            current_fade_duration_samples = get_required_timeframes_number(fadings_hd.duration, sample_rate)
+            # arg_range =
+            #   if(fadings_hd.to_level > steady_state_multiplier) do
+            #     abs(arg_range)
+            #   else
+            #     -abs(arg_range)
+            #   end
+            multiplicative_fader(
+              data,
+              caps,
+              %{
+                state | fade_in_progress: true,
+                current_fade_duration_samples: current_fade_duration_samples,
+                d_arg: get_d_arg(current_fade_duration_samples, -arg_range, arg_range),
+                current_arg: 0,
+              },
+              new_data
+            )
           else
-            new_data = new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format))
-            multiplicative_fader(rest, caps, state, new_data)
+            multiplicative_fader(
+              rest,
+              caps,
+              %{state | current_time: current_time + 1},
+              new_data <> (timeframe |> multiply_channels_by_constant(steady_state_multiplier, format, sample_size) |> channels_list_to_binary(format))
+            )
           end
-        else
-          if(state.current_time * (Time.seconds(1) / sample_rate) > fade_out_start) do
-            {new_data, state} = 
-            if (arg_count < - div(fade_out_duration_frames, 2)) do
-              {new_data <> (channels |> get_zeros_list |> channels_list_to_binary(format)), state}
-            else
-              {new_data <> (timeframe |> multiply_channels_by_constant(tanh_normalized(arg_count * d_arg), format, sample_size) |> channels_list_to_binary(format)), %{state | arg_count: arg_count - 1}}
 
-            end
-            multiplicative_fader(rest, caps, state, new_data)
+        else
+          if(abs(current_arg * d_arg - arg_range) > abs(arg_range)) do
+            multiplicative_fader(data, caps, %{state | fade_in_progress: false, steady_state_multiplier: fadings_hd.to_level, fadings_list: fadings_tl}, new_data)
           else
-            {:ok, {new_data <> data, %{state | current_time: current_time + div(byte_size(data), timeframe_byte_size) - 1}}}
+            fading_factor = tanh_normalized(current_arg * d_arg - arg_range, steady_state_multiplier, fadings_hd.to_level)
+            multiplicative_fader(
+              rest,
+              caps,
+              %{state | current_time: current_time + 1, current_arg: current_arg + 1},
+              new_data <> (timeframe |> multiply_channels_by_constant(fading_factor, format, sample_size) |> channels_list_to_binary(format))
+            )
           end
         end
+
       leftover ->
         {:ok, {new_data, %{state | leftover: leftover}}}
     end
@@ -106,10 +121,7 @@ defmodule Membrane.Element.Fade.InOut do
   def e(), do: :math.exp(1) # base of the natural logarithm
 
 
-  def get_d_arg(duration, sample_rate, low_arg, high_arg) do
-    tframes = get_required_timeframes_number(duration, sample_rate)
-    (high_arg-low_arg) / tframes
-  end
+  def get_d_arg(tframes, low_arg, high_arg), do: (high_arg-low_arg) / tframes
 
 
   defp get_required_timeframes_number(period, sample_rate), do: (period * sample_rate) |> div(Time.second(1))
@@ -117,7 +129,7 @@ defmodule Membrane.Element.Fade.InOut do
 
   defp tanh(x), do: (1 - :math.pow(e(), -2 * x)) / (1 + :math.pow(e(), -2 * x))
 
-  defp tanh_normalized(x), do: (tanh(x) + 1) / 2 # y axis
+  def tanh_normalized(x, max, min), do: ((tanh(x) + 1) * (max-min) / 2) + min # y axis
 
 
   def get_zeros_list(len), do: for(_ <- 1..len, do: 0)

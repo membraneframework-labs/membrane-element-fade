@@ -1,4 +1,4 @@
 defmodule Membrane.Element.Fade.InOut.Options do
-  alias Membrane.Time
-  defstruct fade_in_duration: 3 |> Time.second, fade_in_start: 0 |> Time.second, fade_out_start: 3 |> Time.second, fade_out_duration: 3 |> Time.second
+	alias Membrane.Time
+  defstruct fadings_list: [%{to_level: 1, at_time: 0, duration: 500 |> Time.millisecond}], initial_level: 0
 end
