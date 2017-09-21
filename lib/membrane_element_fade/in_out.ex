@@ -36,26 +36,25 @@ defmodule Membrane.Element.Fade.InOut do
 
   def handle_caps(:sink, %{format: format, channels: channels, sample_rate: sample_rate} = caps, _, state) do
     {:ok, sample_size} = Raw.format_to_sample_size(format)
-    {:ok, {
-      [caps: {:source, caps}],
+    {{:ok, caps: {:source, caps}},
       %{state |
         sample_size: sample_size,
         sample_duration: (Time.seconds(1) / sample_rate),
         timeframe_byte_size: channels * sample_size,
         leftover: <<>>,
       }
-    }}
+    }
   end
 
 
   def handle_demand(:source, size, :bytes, _, state) do
-    {:ok, {[demand: {:sink, size}], state}}
+    {{:ok, demand: {:sink, size}}, state}
   end
 
 
   def handle_process1(:sink, %Membrane.Buffer{payload: data}, %{caps: %Raw{} = caps}, %{leftover: leftover} = state) do
     {:ok, {faded_data, state}} = multiplicative_fader(leftover <> data, caps, state, <<>>)
-    {:ok, {[buffer: {:source,  %Membrane.Buffer{payload: faded_data}}], state}}
+    {{:ok, buffer: {:source,  %Membrane.Buffer{payload: faded_data}}}, state}
   end
 
 
