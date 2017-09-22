@@ -113,12 +113,7 @@ defmodule Membrane.Element.Fade.InOut do
     end
   end
 
-  defp get_volume_level(x), do: (:math.exp(x)-1)/e()-1
-  # defp get_volume_level(x), do: :math.pow(10, x)/9
-  # defp get_volume_level(x), do: x*x*x*x
-  # defp get_volume_level(x), do: x*x*x
-  # defp get_volume_level(x), do: x*x # https://www.dr-lex.be/info-stuff/volumecontrols.html light, but still more accurate than linear multiplication
-
+  defp get_volume_level(x), do: (:math.exp(x)-1)/(e()-1)
 
   def e(), do: :math.exp(1) # base of the natural logarithm
 

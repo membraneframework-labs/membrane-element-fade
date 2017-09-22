@@ -22,9 +22,9 @@ Then add the following line to your `applications` in `mix.exs`.
 This module's options consist of:
 
 #### initial volume
-The fader performs all-time multiplication of the signal. `:initial_volume` is an indication of how loud it should be at start. It can be specified as non-negative number in range between 0 and 1, with 0 being a muted signal, and 1 being 100% loudness. Technically this value can be greater than 1, however this element is not intended to serve as a gain.
+The fader performs all-time multiplication of the signal. `:initial_volume` is an indication of how loud it should be at start. It can be specified as non-negative number, with 0 being a muted signal, and 1 being 100% loudness. Values greater than 1 amplify the signal and may cause clipping.
 #### fadings list
-`:fadings_list` is, as its name specifies, a list. It contains InOut structs, which specify fade parameters over time. They consist of following keys:
+`:fadings_list` is, as its name specifies, a list. It contains Options.ListType.InOut structs, which specify fade parameters over time. They consist of following keys:
 ##### `:to_level`
 This key specifies how loud should the signal be at the end of described fade. Requirements and further description are similar to those of `initial volume`.
 It is advised to never specify two neighbouring fades with the same levels.
