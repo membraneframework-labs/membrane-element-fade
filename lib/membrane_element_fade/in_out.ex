@@ -6,16 +6,6 @@ defmodule Membrane.Element.Fade.InOut do
   use Membrane.Mixins.Log
   alias Membrane.Time
 
-  @enforce_keys [:to_level, :at_time]
-  defstruct to_level: nil, at_time: nil, duration: 500 |> Time.millisecond, arg_range: 3.5
-  # Fadings list element template
-  @type t :: %Membrane.Element.Fade.InOut{
-    to_level: nil | number,
-    at_time: nil | Time.t,
-    duration: Time.t,
-    arg_range: number
-  }
-
   def_known_source_pads %{
     :source => {:always, :pull, :any}
   }
@@ -69,7 +59,7 @@ defmodule Membrane.Element.Fade.InOut do
 
 
   defp multiplicative_fader(data, %Raw{format: format} = _caps, %{fadings_list: [], current_static_volume: current_static_volume, sample_size: sample_size} = state, new_data) do
-    {:ok, {new_data <> (data |> multiply_channels_by_constant(current_static_volume, format, sample_size) |> channels_list_to_binary(format)), state}}
+    {:ok, {new_data <> (data |> set_channels_volume(current_static_volume, format, sample_size) |> channels_list_to_binary(format)), state}}
   end
   
   defp multiplicative_fader(data, %Raw{format: format, sample_rate: sample_rate} = caps,
@@ -100,7 +90,7 @@ defmodule Membrane.Element.Fade.InOut do
               rest,
               caps,
               %{state | current_time: current_time + 1},
-              new_data <> (timeframe |> multiply_channels_by_constant(current_static_volume, format, sample_size) |> channels_list_to_binary(format))
+              new_data <> (timeframe |> set_channels_volume(current_static_volume, format, sample_size) |> channels_list_to_binary(format))
             )
           end
 
@@ -113,7 +103,7 @@ defmodule Membrane.Element.Fade.InOut do
               rest,
               caps,
               %{state | current_time: current_time + 1, current_arg: current_arg + 1},
-              new_data <> (timeframe |> multiply_channels_by_constant(fading_factor, format, sample_size) |> channels_list_to_binary(format))
+              new_data <> (timeframe |> set_channels_volume(fading_factor, format, sample_size) |> channels_list_to_binary(format))
             )
           end
         end
@@ -122,6 +112,12 @@ defmodule Membrane.Element.Fade.InOut do
         {:ok, {new_data, %{state | leftover: leftover}}}
     end
   end
+
+  defp get_volume_level(x), do: (:math.exp(x)-1)/e()-1
+  # defp get_volume_level(x), do: :math.pow(10, x)/9
+  # defp get_volume_level(x), do: x*x*x*x
+  # defp get_volume_level(x), do: x*x*x
+  # defp get_volume_level(x), do: x*x # https://www.dr-lex.be/info-stuff/volumecontrols.html light, but still more accurate than linear multiplication
 
 
   def e(), do: :math.exp(1) # base of the natural logarithm
@@ -144,6 +140,6 @@ defmodule Membrane.Element.Fade.InOut do
   def channels_list_to_binary(list, format), do: for(x <- list, into: "", do: Raw.value_to_sample!(x, format))
 
 
-  def multiply_channels_by_constant(data, constant, format, sample_size), do: \
-    for(<<x::binary-size(sample_size) <- data>>, do: round(Raw.sample_to_value!(x, format) * constant))
+  def set_channels_volume(data, volume, format, sample_size), do: \
+    for(<<x::binary-size(sample_size) <- data>>, do: round(Raw.sample_to_value!(x, format) * get_volume_level(volume)))
 end

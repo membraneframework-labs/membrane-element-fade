@@ -42,16 +42,16 @@ A fully optional key that specifies +/- range of argument of tanh(x) function wh
 
 Correctly specified options could like like this:
 ```elixir
-alias Membrane.Element.Fade.InOut
+alias Membrane.Element.Fade.InOut.Options
 alias Membrane.Time
 
-%InOut.Options{
+%Options{
   fadings_list: [
-    %InOut{to_level: 1, at_time: 0, duration: 2 |> Time.second, arg_range: 0.5},
-    %InOut{to_level: 0, at_time: 2 |> Time.second, duration: 3 |> Time.second},
-    %InOut{to_level: 0.5, at_time: 6 |> Time.second, duration: 3 |> Time.second},
-    %InOut{to_level: 1, at_time: 10 |> Time.second, duration: 3 |> Time.second, arg_range: 5},
-    %InOut{to_level: 0, at_time: 15 |> Time.second, duration: 10 |> Time.second}], initial_level: 0}},
+    %Options.ListType{to_level: 1, at_time: 0, duration: 2 |> Time.second, arg_range: 0.5},
+    %Options.ListType{to_level: 0, at_time: 2 |> Time.second, duration: 3 |> Time.second},
+    %Options.ListType{to_level: 0.5, at_time: 6 |> Time.second, duration: 3 |> Time.second},
+    %Options.ListType{to_level: 1, at_time: 10 |> Time.second, duration: 3 |> Time.second, arg_range: 5},
+    %Options.ListType{to_level: 0, at_time: 15 |> Time.second, duration: 10 |> Time.second}], initial_level: 0}},
   ],
   initial_level: 0}
 ```
