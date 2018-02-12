@@ -15,14 +15,14 @@ defmodule Membrane.Element.Fade.InOut do
   }
 
 
-  def handle_init(%Options{fadings_list: fadings_list, initial_volume: initial_volume}) do
+  def handle_init(%Options{fadings: fadings, initial_volume: initial_volume}) do
     {:ok, %{
       arg_range: 3,
       current_arg: 0,
       current_time: 0,
       current_fade_duration_samples: 0,
       d_arg: 0.0,
-      fadings_list: fadings_list,
+      fadings: fadings,
       fade_in_progress: false,
       leftover: <<>>,
       sample_duration: 0.0,
@@ -58,13 +58,13 @@ defmodule Membrane.Element.Fade.InOut do
   end
 
 
-  defp multiplicative_fader(data, %Raw{format: format} = _caps, %{fadings_list: [], current_static_volume: current_static_volume, sample_size: sample_size} = state, new_data) do
-    {:ok, {new_data <> (data |> set_channels_volume(current_static_volume, format, sample_size) |> channels_list_to_binary(format)), state}}
+  defp multiplicative_fader(data, %Raw{format: format} = _caps, %{fadings: [], current_static_volume: current_static_volume, sample_size: sample_size} = state, new_data) do
+    {:ok, {new_data <> (data |> set_channels_volume(current_static_volume, format, sample_size)), state}}
   end
-  
+
   defp multiplicative_fader(data, %Raw{format: format, sample_rate: sample_rate} = caps,
                             %{arg_range: arg_range, sample_size: sample_size, current_static_volume: current_static_volume, current_time: current_time, sample_duration: sample_duration, d_arg: d_arg, tanh_range: tanh_range,
-                            timeframe_byte_size: timeframe_byte_size, fade_in_progress: fade_in_progress, fadings_list: [fadings_hd | fadings_tl], current_fade_duration_samples: current_fade_duration_samples, current_arg: current_arg} = state,
+                            timeframe_byte_size: timeframe_byte_size, fade_in_progress: fade_in_progress, fadings: [fadings_hd | fadings_tl], current_fade_duration_samples: current_fade_duration_samples, current_arg: current_arg} = state,
                             new_data) do
 
     case data do
@@ -77,11 +77,11 @@ defmodule Membrane.Element.Fade.InOut do
               caps,
               %{
                 state | fade_in_progress: true,
-                arg_range: fadings_hd.arg_range,
+                arg_range: fadings_hd.tanh_arg_range,
                 current_fade_duration_samples: current_fade_duration_samples,
-                d_arg: get_d_arg(current_fade_duration_samples, -fadings_hd.arg_range, fadings_hd.arg_range),
+                d_arg: get_d_arg(current_fade_duration_samples, -fadings_hd.tanh_arg_range, fadings_hd.tanh_arg_range),
                 current_arg: 0,
-                tanh_range: tanh(fadings_hd.arg_range),
+                tanh_range: tanh(fadings_hd.tanh_arg_range),
               },
               new_data
             )
@@ -90,20 +90,20 @@ defmodule Membrane.Element.Fade.InOut do
               rest,
               caps,
               %{state | current_time: current_time + 1},
-              new_data <> (timeframe |> set_channels_volume(current_static_volume, format, sample_size) |> channels_list_to_binary(format))
+              new_data <> (timeframe |> set_channels_volume(current_static_volume, format, sample_size))
             )
           end
 
         else
           if(current_arg > current_fade_duration_samples) do
-            multiplicative_fader(data, caps, %{state | fade_in_progress: false, current_static_volume: fadings_hd.to_level, fadings_list: fadings_tl}, new_data)
+            multiplicative_fader(data, caps, %{state | fade_in_progress: false, current_static_volume: fadings_hd.to_level, fadings: fadings_tl}, new_data)
           else
             fading_factor = tanh_normalized(current_arg * d_arg - arg_range, tanh_range, current_static_volume, fadings_hd.to_level)
             multiplicative_fader(
               rest,
               caps,
               %{state | current_time: current_time + 1, current_arg: current_arg + 1},
-              new_data <> (timeframe |> set_channels_volume(fading_factor, format, sample_size) |> channels_list_to_binary(format))
+              new_data <> (timeframe |> set_channels_volume(fading_factor, format, sample_size))
             )
           end
         end
@@ -132,9 +132,15 @@ defmodule Membrane.Element.Fade.InOut do
   def get_zeros_list(len), do: for(_ <- 1..len, do: 0)
 
 
-  def channels_list_to_binary(list, format), do: for(x <- list, into: "", do: Raw.value_to_sample!(x, format))
+  def set_channels_volume(data, 1, _format, _sample_size), do: data
+  def set_channels_volume(data, volume, format, sample_size) do
+    volume_level = get_volume_level(volume)
+    for <<x::binary-size(sample_size) <- data>>, into: <<>>, do:
+      x
+        |> Raw.sample_to_value!(format)
+        |> Kernel.*(volume_level)
+        |> round
+        |> Raw.value_to_sample!(format)
+  end
 
-
-  def set_channels_volume(data, volume, format, sample_size), do: \
-    for(<<x::binary-size(sample_size) <- data>>, do: round(Raw.sample_to_value!(x, format) * get_volume_level(volume)))
 end

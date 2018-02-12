@@ -1,6 +1,6 @@
 # Membrane.Element.Fade
 
-This element applies fading curves to the data, performing fade in and fade out operations. 
+This element applies fading curves to the data, performing fade in and fade out operations.
 
 # Usage
 ## Installation
@@ -23,8 +23,8 @@ This module's options consist of:
 
 #### initial volume
 The fader performs all-time multiplication of the signal. `:initial_volume` is an indication of how loud it should be at start. It can be specified as non-negative number, with 0 being a muted signal, and 1 being 100% loudness. Values greater than 1 amplify the signal and may cause clipping.
-#### fadings list
-`:fadings_list` is, as its name specifies, a list. It contains Options.ListType.InOut structs, which specify fade parameters over time. They consist of following keys:
+#### fadings
+`:fadings` is a list containing `Fade.InOut.Fading` structs, which specify fade parameters over time. They consist of following keys:
 ##### `:to_level`
 This key specifies how loud should the signal be at the end of described fade. Requirements and further description are similar to those of `initial volume`.
 It is advised to never specify two neighbouring fades with the same levels.
@@ -37,23 +37,24 @@ The fades should be specified in the same order as they are intended to be perfo
 Required.
 ##### `:duration`
 Time between start and finish of the fade, given in Membrane.Time units. Default 500 ms.
-##### `:arg_range`
-A fully optional key that specifies +/- range of argument of tanh(x) function which is used for fading. If specified, it should be a positive number. Generally speaking, decreasing this keys' value without changing the `:duration` should give a feeling of more gentle slope, while increasing it should make fade function more steep in the middle of duration. Default 3.
+##### `:tanh_arg_range`
+An optional key that specifies +/- range of argument of tanh(x) function which is used for fading. If specified, it should be a positive number. Generally speaking, decreasing this keys' value without changing the `:duration` should give a feeling of more gentle slope, while increasing it should make fade function more steep in the middle of duration. Default 3.
 
 Correctly specified options could like like this:
 ```elixir
-alias Membrane.Element.Fade.InOut.Options
+alias Membrane.Element.Fade.InOut.{Options, Fading}
 alias Membrane.Time
 
 %Options{
   fadings_list: [
-    %Options.ListType{to_level: 1, at_time: 0, duration: 2 |> Time.second, arg_range: 0.5},
-    %Options.ListType{to_level: 0, at_time: 2 |> Time.second, duration: 3 |> Time.second},
-    %Options.ListType{to_level: 0.5, at_time: 6 |> Time.second, duration: 3 |> Time.second},
-    %Options.ListType{to_level: 1, at_time: 10 |> Time.second, duration: 3 |> Time.second, arg_range: 5},
-    %Options.ListType{to_level: 0, at_time: 15 |> Time.second, duration: 10 |> Time.second}], initial_level: 0}},
+    %Fading{to_level: 1, at_time: 0, duration: 2 |> Time.second, arg_range: 0.5},
+    %Fading{to_level: 0, at_time: 2 |> Time.second, duration: 3 |> Time.second},
+    %Fading{to_level: 0.5, at_time: 6 |> Time.second, duration: 3 |> Time.second},
+    %Fading{to_level: 1, at_time: 10 |> Time.second, duration: 3 |> Time.second, tanh_arg_range: 5},
+    %Fading{to_level: 0, at_time: 15 |> Time.second, duration: 10 |> Time.second},
   ],
-  initial_level: 0}
+  initial_level: 0,
+}
 ```
 
 # License
