@@ -1,4 +1,4 @@
-defmodule Membrane.Element.Fade.InOut.Fading do
+defmodule Membrane.Element.Fade.Fading do
   alias Membrane.Time
 
   @enforce_keys [:to_level, :at_time]
@@ -11,7 +11,7 @@ defmodule Membrane.Element.Fade.InOut.Fading do
   ]
 
   # Fadings list element template
-  @type t :: %Membrane.Element.Fade.InOut.Fading{
+  @type t :: %__MODULE__{
     to_level: nil | number,
     at_time: nil | Time.t,
     duration: Time.t,
