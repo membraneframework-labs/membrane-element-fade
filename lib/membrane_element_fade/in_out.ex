@@ -17,12 +17,15 @@ defmodule Membrane.Element.Fade.InOut do
   }
 
 
-  def handle_init(%Options{fadings: fadings, initial_volume: initial_volume}) do
+  def handle_init(%Options{
+    fadings: fadings, initial_volume: initial_volume, step_time: step_time,
+  }) do
     fadings = fadings |> Enum.sort_by(& &1.at_time)
     with :ok <- fadings |> validate_fadings do
       {:ok, %{
         time: 0,
         fadings: fadings,
+        step_time: step_time,
         leftover: <<>>,
         static_volume: initial_volume,
         fader_state: nil,
@@ -85,8 +88,10 @@ defmodule Membrane.Element.Fade.InOut do
       end
 
     revolumed = to_revolume |> Fader.revolume(caps, static_volume)
+    step = (caps.sample_rate * state.step_time) |> div(1 |> Time.second) |> min(1)
+    frames_left = bytes_to_fade |> div(frame_size caps)
     {faded, fader_state} = to_fade
-      |> Fader.fade(bytes_to_fade |> div(frame_size caps), fading.to_level, fading.tanh_arg_range, static_volume, caps, fader_state)
+      |> Fader.fade(frames_left, step, fading.to_level, fading.tanh_arg_range, static_volume, caps, fader_state)
 
     time = time + (((byte_size to_revolume) + (byte_size to_fade)) |> bytes_to_time(caps))
 

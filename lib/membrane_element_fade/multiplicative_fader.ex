@@ -4,30 +4,31 @@ defmodule Membrane.Element.Fade.MultiplicativeFader do
   use Membrane.Mixins.Log
 
 
-  def fade(<<>>, _frames_left, _to_level, _tanh_arg_range, _current_static_volume, _caps, state), do:
+  def fade(<<>>, _frames_left, _step, _to_level, _tanh_arg_range, _current_static_volume, _caps, state), do:
     {<<>>, state}
 
-  def fade(data, frames_left, to_level, tanh_arg_range, current_static_volume, caps, state) do
+  def fade(data, frames_left, step, to_level, tanh_arg_range, current_static_volume, caps, state) do
     state = state || %{tanh_arg: -tanh_arg_range}
-    tanh_arg_delta = (tanh_arg_range - state.tanh_arg) / frames_left
+    tanh_arg_delta = (tanh_arg_range - state.tanh_arg) * step / frames_left
     volume_gen = fn tanh_arg ->
         tanh_normalized(tanh_arg, tanh_arg_range, current_static_volume, to_level)
       end
+    step_size = step * (caps |> frame_size)
     {data, tanh_arg} = data
-      |> do_fade(caps |> frame_size, caps, state.tanh_arg, tanh_arg_delta, volume_gen, <<>>)
+      |> do_fade(step_size, caps, state.tanh_arg, tanh_arg_delta, volume_gen, <<>>)
     {data, %{state | tanh_arg: tanh_arg}}
   end
 
 
-  defp do_fade(<<>>, _frame_size, _caps, tanh_arg, _tanh_arg_delta, _volume_gen, acc), do:
+  defp do_fade(<<>>, _step_size, _caps, tanh_arg, _tanh_arg_delta, _volume_gen, acc), do:
     {acc, tanh_arg}
 
-  defp do_fade(data, frame_size, caps, tanh_arg, tanh_arg_delta, volume_gen, acc) do
-    <<chunk::binary-size(frame_size), rest::binary>> = data
+  defp do_fade(data, step_size, caps, tanh_arg, tanh_arg_delta, volume_gen, acc) do
+    <<chunk::binary-size(step_size), rest::binary>> = data
     volume = volume_gen.(tanh_arg)
     chunk = chunk |> set_volume(volume, caps.format)
     rest
-      |> do_fade(frame_size, caps, tanh_arg+tanh_arg_delta, tanh_arg_delta, volume_gen, acc <> chunk)
+      |> do_fade(step_size, caps, tanh_arg+tanh_arg_delta, tanh_arg_delta, volume_gen, acc <> chunk)
   end
 
   def revolume(data, caps, level), do: data |> set_volume(level, caps.format)

@@ -23,6 +23,8 @@ This module's options consist of:
 
 #### initial volume
 The fader performs all-time multiplication of the signal. `:initial_volume` is an indication of how loud it should be at start. It can be specified as non-negative number, with 0 being a muted signal, and 1 being 100% loudness. Values greater than 1 amplify the signal and may cause clipping.
+#### step_time
+Step time determines length of each chunk having equal volume level while fading.
 #### fadings
 `:fadings` is a list containing `Fade.InOut.Fading` structs, which specify fade parameters over time. They consist of following keys:
 ##### `:to_level`
@@ -53,7 +55,8 @@ alias Membrane.Time
     %Fading{to_level: 1, at_time: 10 |> Time.second, duration: 3 |> Time.second, tanh_arg_range: 5},
     %Fading{to_level: 0, at_time: 15 |> Time.second, duration: 10 |> Time.second},
   ],
-  initial_level: 0,
+  initial_volume: 0,
+  step_time: 2 |> Time.milliseconds,
 }
 ```
 
