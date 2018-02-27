@@ -33,12 +33,14 @@ defmodule Membrane.Element.Fade.InOut do
   defp validate_fadings(fadings) do
     fadings
       |> Enum.chunk_every(2)
-      |> Helper.Enum.each_with(fn [f1, f2] ->
-        if f1.at_time + f1.duration <= f2.at_time do
-          :ok
-        else
-          {:error, {:overlapping_fadings, f1, f2}}
-        end
+      |> Helper.Enum.each_with(fn
+        [f1, f2] ->
+          if f1.at_time + f1.duration <= f2.at_time do
+            :ok
+          else
+            {:error, {:overlapping_fadings, f1, f2}}
+          end
+        _ -> :ok
       end)
   end
 
