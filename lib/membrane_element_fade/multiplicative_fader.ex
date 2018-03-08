@@ -13,7 +13,7 @@ defmodule Membrane.Element.Fade.MultiplicativeFader do
     volume_gen = fn tanh_arg ->
         tanh_normalized(tanh_arg, tanh_arg_range, current_static_volume, to_level)
       end
-    step_size = step * (caps |> frame_size)
+    step_size = step * Caps.frame_size(caps)
     {data, tanh_arg} = data
       |> do_fade(step_size, caps, state.tanh_arg, tanh_arg_delta, volume_gen, <<>>)
     {data, %{state | tanh_arg: tanh_arg}}
@@ -26,16 +26,12 @@ defmodule Membrane.Element.Fade.MultiplicativeFader do
   defp do_fade(data, step_size, caps, tanh_arg, tanh_arg_delta, volume_gen, acc) do
     <<chunk::binary-size(step_size), rest::binary>> = data
     volume = volume_gen.(tanh_arg)
-    chunk = chunk |> set_volume(volume, caps.format)
+    chunk = chunk |> set_volume(volume, caps)
     rest
       |> do_fade(step_size, caps, tanh_arg+tanh_arg_delta, tanh_arg_delta, volume_gen, acc <> chunk)
   end
 
-  def revolume(data, caps, level), do: data |> set_volume(level, caps.format)
-
-  defp frame_size(caps) do
-    Caps.format_to_sample_size!(caps.format) * caps.channels
-  end
+  def revolume(data, caps, level), do: data |> set_volume(level, caps)
 
   defp get_volume_level(x), do: (:math.exp(x)-1)/(e()-1)
 
@@ -48,22 +44,22 @@ defmodule Membrane.Element.Fade.MultiplicativeFader do
 
   defp tanh_normalized(x, range, old, new), do: (tanh(x) + range) / (2*range) * (new-old) + old # y axis
 
-  defp set_volume(data, 1, _format), do: data
-  defp set_volume(data, volume, format) do
-    sample_size = format |> Caps.format_to_sample_size!
+  defp set_volume(data, 1, _caps), do: data
+  defp set_volume(data, volume, caps) do
+    sample_size = caps |> Caps.sample_size
     volume_level = get_volume_level(volume)
-    data |> do_set_volume(sample_size, format, volume_level, <<>>)
+    data |> do_set_volume(sample_size, caps, volume_level, <<>>)
   end
 
-  defp do_set_volume(<<>>, _sample_size, _format, _volume_level, acc), do: acc
-  defp do_set_volume(data, sample_size, format, volume_level, acc) do
+  defp do_set_volume(<<>>, _sample_size, _caps, _volume_level, acc), do: acc
+  defp do_set_volume(data, sample_size, caps, volume_level, acc) do
     <<sample::binary-size(sample_size), rest::binary>> = data
     sample = sample
-      |> Caps.sample_to_value!(format)
+      |> Caps.sample_to_value(caps)
       |> Kernel.*(volume_level)
       |> round
-      |> Caps.value_to_sample!(format)
-    rest |> do_set_volume(sample_size, format, volume_level, acc <> sample)
+      |> Caps.value_to_sample(caps)
+    rest |> do_set_volume(sample_size, caps, volume_level, acc <> sample)
   end
 
 

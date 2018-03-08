@@ -60,7 +60,8 @@ defmodule Membrane.Element.Fade.InOut do
 
   def handle_process1(:sink, %Buffer{payload: payload}, %{caps: caps}, state) do
     {payload, state} = state
-      |> Map.get_and_update!(:leftover, & (&1 <> payload) |> Helper.Binary.int_rem(frame_size(caps)))
+      |> Map.get_and_update!(
+        :leftover, & (&1 <> payload) |> Helper.Binary.int_rem(Caps.frame_size caps))
     {payload, state} = payload |> process_buffer(caps, state)
     {{:ok, buffer: {:source, %Buffer{payload: payload}}}, state}
   end
@@ -72,10 +73,10 @@ defmodule Membrane.Element.Fade.InOut do
   defp process_buffer(data, caps, %{fadings: [fading | fadings]} = state) do
     %{time: time, static_volume: static_volume, fader_state: fader_state} = state
 
-    bytes_to_revolume = max(0, fading.at_time - time) |> time_to_bytes(caps)
+    bytes_to_revolume = max(0, fading.at_time - time) |> Caps.time_to_bytes(caps)
 
     bytes_to_fade =
-      (fading.duration - max(0, time - fading.at_time)) |> time_to_bytes(caps)
+      (fading.duration - max(0, time - fading.at_time)) |> Caps.time_to_bytes(caps)
 
     {{to_revolume, to_fade, rest}, end_of_fading} =
       case data do
@@ -89,11 +90,12 @@ defmodule Membrane.Element.Fade.InOut do
 
     revolumed = to_revolume |> Fader.revolume(caps, static_volume)
     step = (caps.sample_rate * state.step_time) |> div(1 |> Time.second) |> min(1)
-    frames_left = bytes_to_fade |> div(frame_size caps)
+    frames_left = bytes_to_fade |> Caps.bytes_to_frames(caps)
     {faded, fader_state} = to_fade
       |> Fader.fade(frames_left, step, fading.to_level, fading.tanh_arg_range, static_volume, caps, fader_state)
 
-    time = time + (((byte_size to_revolume) + (byte_size to_fade)) |> bytes_to_time(caps))
+    consumed_bytes = (byte_size to_revolume) + (byte_size to_fade)
+    time = time + (consumed_bytes |> Caps.bytes_to_time(caps))
 
     state =
       if end_of_fading do
@@ -108,24 +110,7 @@ defmodule Membrane.Element.Fade.InOut do
 
   defp process_buffer(data, caps, %{fadings: []} = state) do
     data = data |> Fader.revolume(caps, state.static_volume)
-    {data, state |> Map.update!(:time, & &1 + (data |> byte_size |> bytes_to_time(caps)))}
-  end
-
-  defp time_to_bytes(time, caps) when time >= 0 do
-    ((time * caps.sample_rate / (1 |> Time.second)) |> :math.ceil |> trunc)
-      * Caps.format_to_sample_size!(caps.format) * caps.channels
-  end
-
-  defp bytes_to_time(bytes, caps) when bytes >= 0 do
-    bytes * (1 |> Time.second) / (caps.sample_rate * Caps.format_to_sample_size!(caps.format) * caps.channels)
-  end
-
-  # defp time_to_frames(time, caps) do
-  #   (time * caps.sample_rate) |> div(1 |> Time.second)
-  # end
-
-  defp frame_size(caps) do
-    Caps.format_to_sample_size!(caps.format) * caps.channels
+    {data, state |> Map.update!(:time, & &1 + (data |> byte_size |> Caps.bytes_to_time(caps)))}
   end
 
 end
