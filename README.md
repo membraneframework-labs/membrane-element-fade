@@ -8,14 +8,9 @@ This element applies fading curves to the data, performing fade in and fade out 
 Add the following line to your `deps` in `mix.exs`.  Run `mix deps.get`.
 
 ```elixir
-{:membrane_element_fade, git: "git@github.com:membraneframework/membrane-element-fade.git"}
+{:membrane_element_fade, github: "membraneframework/membrane-element-fade"}
 ```
 
-Then add the following line to your `applications` in `mix.exs`.
-
-```elixir
-:membrane_element_fade
-```
 
 ## Fade.InOut
 ### Options
