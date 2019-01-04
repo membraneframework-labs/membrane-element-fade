@@ -30,9 +30,7 @@ defmodule Membrane.Element.Fade do
               ],
               step_time: [
                 default: 5 |> Time.milliseconds(),
-                default_formatter: &Time.pretty_duration/1,
-                type: :integer,
-                spec: Time.t(),
+                type: :time,
                 description: """
                 Determines length of each chunk having equal volume level while
                 fading.
