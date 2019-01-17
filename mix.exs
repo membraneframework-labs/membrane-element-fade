@@ -1,7 +1,7 @@
 defmodule Membrane.Element.Fade.Mixfile do
   use Mix.Project
 
-  @version "0.0.2"
+  @version "0.1.0"
   @github_url "https://github.com/membraneframework/membrane-element-fade"
 
   def project do
@@ -52,9 +52,9 @@ defmodule Membrane.Element.Fade.Mixfile do
   defp deps do
     [
       {:ex_doc, "~> 0.19", only: :dev, runtime: false},
-      {:membrane_core, github: "membraneframework/membrane-core", override: true},
-      {:membrane_caps_audio_raw, "~> 0.1.3"},
-      {:bunch, github: "membraneframework/bunch", override: true}
+      {:membrane_core, "~> 0.2.1"},
+      {:membrane_caps_audio_raw, "~> 0.1"},
+      {:bunch, "~> 0.2"}
     ]
   end
 end
