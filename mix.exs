@@ -31,7 +31,7 @@ defmodule Membrane.Element.Fade.Mixfile do
   defp package do
     [
       maintainers: ["Membrane Team"],
-      licenses: ["Proprietary"],
+      licenses: ["Apache 2.0"],
       links: %{
         "GitHub" => @github_url,
         "Membrane Framework Homepage" => "https://membraneframework.org"
