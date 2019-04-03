@@ -37,9 +37,9 @@ defmodule Membrane.Element.Fade do
                 """
               ]
 
-  def_output_pads output: [caps: Raw]
+  def_output_pad :output, caps: Raw
 
-  def_input_pads input: [demand_unit: :bytes, caps: Raw]
+  def_input_pad :input, demand_unit: :bytes, caps: Raw
 
   def handle_init(%__MODULE__{
         fadings: fadings,

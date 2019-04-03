@@ -1,5 +1,7 @@
 # Membrane.Element.Fade
 
+## Warning: This element is experimental!
+
 This element applies fading curves to the stream, performing fade in and fade out operations.
 
 ## Installation
