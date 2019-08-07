@@ -5,7 +5,7 @@ defmodule Membrane.Element.Fade do
   alias __MODULE__.Fading
   alias __MODULE__.MultiplicativeFader, as: Fader
 
-  use Membrane.Element.Base.Filter
+  use Membrane.Filter
   use Membrane.Log, tags: :membrane_element_fade
 
   def_options fadings: [
