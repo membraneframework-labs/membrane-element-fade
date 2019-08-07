@@ -52,7 +52,8 @@ defmodule Membrane.Element.Fade.Mixfile do
   defp deps do
     [
       {:ex_doc, "~> 0.19", only: :dev, runtime: false},
-      {:membrane_core, "~> 0.3.0"},
+      {:membrane_core,
+       github: "membraneframework/membrane-core", branch: "master", override: true},
       {:membrane_caps_audio_raw, "~> 0.1.7"},
       {:bunch, "~> 1.0"}
     ]
