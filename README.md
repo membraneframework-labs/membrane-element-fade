@@ -1,5 +1,7 @@
 # Membrane.Element.Fade
 
+[![CircleCI](https://circleci.com/gh/membraneframework/membrane-element-fade.svg?style=svg)](https://circleci.com/gh/membraneframework/membrane-element-fade)
+
 ## Warning: This element is experimental!
 
 This element applies fading curves to the stream, performing fade in and fade out operations.
